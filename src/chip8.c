@@ -27,10 +27,11 @@ void decode(uint16_t val, uint16_t *PC, uint16_t *Stack, uint8_t *SP, uint16_t *
 	uint8_t Y = (val & 0x00F0) >> 4;
 	uint8_t NN = val & 0x00FF;
 	printf("opcode: %x\n", val);
-	printf("V[X]: %d\n",V[X]);
-	printf("V[Y]: %d\n",V[Y]);
+	printf("V[X]: %x\n",V[X]);
+	printf("V[Y]: %x\n",V[Y]);
 	printf("PC: %x\n", *PC);
 	printf("SP: %x\n", *SP);
+	printf("Stack: %x\n", Stack[*SP-1]);
 	int posX;
     int posY;
 	SDL_Event event;
@@ -42,11 +43,12 @@ void decode(uint16_t val, uint16_t *PC, uint16_t *Stack, uint8_t *SP, uint16_t *
 				}
 				memset(framebuffer, 0, sizeof(framebuffer));
 			}
-			else{ //pops instruction of the stack
-				
-				*PC = Stack[*SP];
-				Stack[*SP] = 0;
-				*SP-=1;
+			else if((val & 0x00FF) == 0x00EE){ //pops instruction of the stack
+				if(*SP > 0){	
+					*SP-=1;
+					*PC = Stack[*SP];
+					Stack[*SP] = 0;
+				}
 			}
             break;
 		case 0x1000://1NNN
@@ -54,10 +56,12 @@ void decode(uint16_t val, uint16_t *PC, uint16_t *Stack, uint8_t *SP, uint16_t *
             printf("1NNN");
 			break;
 		case 0x2000://2NNN
-			Stack[*SP] = *PC; //Adds instruction to stack
-			*SP+=1;
-            *PC = (val & 0x0FFF); //Sets PC to NNN
-            printf("2NNN");
+			if(*SP < 16){
+				Stack[*SP] = *PC + 2; //Adds instruction to stack
+				*SP+=1;
+            	*PC = (val & 0x0FFF); //Sets PC to NNN
+            	printf("2NNN");
+			}
 			break;
 		case 0x3000: //3XNN
             if(V[X] == NN){ //skips following instruction if value at register VX is equal to NN
@@ -241,7 +245,7 @@ void decode(uint16_t val, uint16_t *PC, uint16_t *Stack, uint8_t *SP, uint16_t *
 	}
 	if ((val & 0xF000) != 0x1000 &&  // Not JP
     	(val & 0xF000) != 0x2000 &&  // Not CALL
-    	(((val & 0xF000) != 0xE000) && ((val & 0x00FF) != 0x00EE)) &&  // Not RET
+    	(val != 0x00EE) &&  // Not RET
     	(val & 0xF000) != 0xB000) {  // Not BNNN (JP V0 + NNN)
     		*PC += 2;
 	}
