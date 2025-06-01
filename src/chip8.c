@@ -26,22 +26,27 @@ void decode(uint16_t val, uint16_t *PC, uint16_t *Stack, uint8_t *SP, uint16_t *
 	uint8_t X = (val & 0x0F00) >> 8;
 	uint8_t Y = (val & 0x00F0) >> 4;
 	uint8_t NN = val & 0x00FF;
-	printf("opcode: %x\n", val);
-	printf("V[X]: %x\n",V[X]);
-	printf("V[Y]: %x\n",V[Y]);
-	printf("PC: %x\n", *PC);
-	printf("SP: %x\n", *SP);
-	printf("Stack: %x\n", Stack[*SP-1]);
+	
+	//declaring these variable within the case statements caused some issues
 	int posX;
     int posY;
-	SDL_Event event;
+	static bool waiting_for_key = false;
+    static uint8_t key_reg = 0;
+	
+	//debugging info
+	printf("opcode: %x\n", val);
+    printf("V[X]: %x\n",V[X]);
+    printf("V[Y]: %x\n",V[Y]);
+    printf("PC: %x\n", *PC);
+    printf("SP: %x\n", *SP);
+
 	switch(val & 0xF000){ //check for left most nibble to get instruction type
 		case 0x0000:
             if((val & 0x00FF) == 0x00E0){ //clear the screen
 				if(SDL_RenderClear(sdl->render)){
 					fprintf(stderr, "Error clearing screen: %s", SDL_GetError());
 				}
-				memset(framebuffer, 0, sizeof(framebuffer));
+				memset(framebuffer, 0, 64*32*sizeof(uint32_t));
 			}
 			else if((val & 0x00FF) == 0x00EE){ //pops instruction of the stack
 				if(*SP > 0){	
@@ -53,47 +58,38 @@ void decode(uint16_t val, uint16_t *PC, uint16_t *Stack, uint8_t *SP, uint16_t *
             break;
 		case 0x1000://1NNN
             *PC = (val & 0x0FFF);//sets PC to NNN
-            printf("1NNN");
 			break;
 		case 0x2000://2NNN
 			if(*SP < 16){
 				Stack[*SP] = *PC + 2; //Adds instruction to stack
 				*SP+=1;
             	*PC = (val & 0x0FFF); //Sets PC to NNN
-            	printf("2NNN");
 			}
 			break;
 		case 0x3000: //3XNN
             if(V[X] == NN){ //skips following instruction if value at register VX is equal to NN
 				*PC += 2;
 			}
-			printf("3NNN");
             break;
 		case 0x4000: //4XNN
             if(V[X] != NN){ //skips following instruction if value at register VX != NN
 				*PC += 2;
 			}
-			printf("4NNN\n");
-            printf("VX: %x\n", V[X]);
 			break;
 		case 0x5000: //5XYN
             if(V[X] == V[Y]){ //skips following instruction if value at VX == VY
 				 *PC += 2;
 			}
-			printf("5NNN");
             break;
 		case 0x6000: //6XNN
             V[X] = NN; //sets value at VX equal to NN
-            printf("6NNN");
 			break;
 		case 0x7000: //7XNN
             V[X] = V[X] + NN; //adds NN to value at VX
             V[X] = (V[X]& 0xFF);
-			printf("7NNN");
 			break;
-		case 0x8000:
-            printf("8XX2: V[X]: %x V[Y]: %x\n", V[X], V[Y]);
-			switch(val & 0x000F){ //8XYN
+		case 0x8000://8XYN
+			switch(val & 0x000F){ 
 				case 0x0:	
 					V[X] =  V[Y];
 					break;
@@ -126,7 +122,7 @@ void decode(uint16_t val, uint16_t *PC, uint16_t *Stack, uint8_t *SP, uint16_t *
                 	break;
 				case 0x6:
 					V[X] = (V[Y]>>1);//sets VX equal to VY shifted two the right 1 bit
-        			V[0XF] = (V[Y] & 1); //Stores the rightmost bit before the shift in VF
+        			V[0XF] = (V[Y] & 1); //stores the rightmost bit before the shift in VF
 					break;
 				case 0x7:
 					if(V[X] < V[Y]){
@@ -138,12 +134,11 @@ void decode(uint16_t val, uint16_t *PC, uint16_t *Stack, uint8_t *SP, uint16_t *
         			V[X] = V[Y] - V[X];
 					break;
 				case 0xE:
-					V[X] = (V[Y]>>1);
+					V[X] = (V[Y]<<1);
 					V[0xF] = (V[Y] & 1);
 					break;
-				printf("8NNN");
 			}
-		break;
+			break;
 		case 0x9000:
             if(V[X] != V[Y]){ //skips next instruction if VX's value doesn't equal VY's value
 				*PC+= 2;
@@ -152,29 +147,26 @@ void decode(uint16_t val, uint16_t *PC, uint16_t *Stack, uint8_t *SP, uint16_t *
 		case 0xA000://ANNN
             *I = val & 0x0FFF; //updates I's value to be 0x0NNN
 			break;
-        case 0xB000:
-            *PC = V[0] + (val & 0xFFF);
+        case 0xB000://BNNN
+            *PC = V[0] + (val & 0xFFF);//jumps to V0 + NNN
             break;
-		case 0xC000:
-            V[X] = ((rand() % 256) & NN); 
+		case 0xC000://CXNN
+            V[X] = ((rand() % 256) & NN);//sets VX equal to a random number with a bit mask of NN
             break;
 		case 0xD000: //DXYN
-    		posX = V[X] % 64;  // WIDTH=64
-    		posY = V[Y] % 32; // HEIGHT=32
+			//account for reacharound
+			posX = V[X] % 64;
+    		posY = V[Y] % 32;
 
     		V[0xF] = 0;  // Reset collision flag
-    		if(Y==0x6 || Y==0x7){
-				printf("yVal: %d xVal: %d", V[Y], V[X]);
-				printf("posY: %d posX: %d", posY, posX);
-			}
 			for (int i = 0; i < (val & 0x000F); i++) {  // N rows
         		uint8_t sprite_data = memory[*I + i];
-        		for (int j = 0; j < 8; j++) {  // 8 bits per row
-            		bool bitj = (sprite_data & (0x80 >> j)) != 0;
+        		if (posY + i >= 32) break;
+				for (int j = 0; j < 8; j++) {  // 8 bits per row
+					bool bitj = (sprite_data & (0x80 >> j)) != 0;
             		int x = (posX + j) % 64;
             		int y = (posY + i) % 32;
             		int index = y * 64 + x;
-
             		if(bitj) {
                 		if(framebuffer[index] == 0xFFFFFFFF) {  // If pixel was already set
                     		V[0xF] = 1;  // Collision detected
@@ -183,10 +175,8 @@ void decode(uint16_t val, uint16_t *PC, uint16_t *Stack, uint8_t *SP, uint16_t *
             		}
         		}
     		}
-    		printf("DNNN\n");
     		break;
-		case 0xE000:{	
-			SDL_Event event;
+		case 0xE000:	
 			if(NN == 0x9E){ //skips next instruction if key pressed is equal to value stored at VX
 				const uint8_t *keystate = SDL_GetKeyboardState(NULL);
 				if (keystate[chip8_to_sdl[V[X]]]) {
@@ -200,18 +190,30 @@ void decode(uint16_t val, uint16_t *PC, uint16_t *Stack, uint8_t *SP, uint16_t *
                 }
 			}
             break;
-		}
 		case 0xF000:
 			switch(NN){
 				case 0x07:
 					V[X] = *delay;
 					break;
 				case 0x0A:
-                    if(SDL_PollEvent(&event)){
-                   		const uint8_t *keystate = SDL_GetKeyboardState(NULL);
-                        V[X] = *keystate;
-                    }
-					
+    				if (!waiting_for_key) {
+        				waiting_for_key = true;
+        				key_reg = X;
+        				*PC -= 2; //repeat this instruction
+    				}
+					else{
+        				const uint8_t *keystate = SDL_GetKeyboardState(NULL);
+        				for (int i = 0; i < 16; i++) {
+            				if(keystate[chip8_to_sdl[i]]) {
+                				V[key_reg] = i;
+                				waiting_for_key = false;
+                				break;
+            				}
+        				}
+        				if(waiting_for_key) {
+            				*PC -= 2; //repeat instruction
+        				}
+    				}
 					break;
 				case 0x15:
 					*delay = V[X];
@@ -223,26 +225,29 @@ void decode(uint16_t val, uint16_t *PC, uint16_t *Stack, uint8_t *SP, uint16_t *
 					*I+=V[X];
 					break;
 				case 0x29:
-					*I = memory[V[X]]; //return and finish this
+					*I = 0x50 + (V[X] * 5);//sets I equal to memory address w/ VX's corresponding font
 					break;
 				case 0x33:
-					//todo
+					memory[*I] = V[X] / 100;
+    				memory[*I + 1] = (V[X] / 10) % 10;
+    				memory[*I + 2] = V[X] % 10;
 					break;
 				case 0x55:
 					for(int i = 0; i <= X; i++){
-						memory[(*I)+i] = V[i];
+						memory[(*I)+i] = V[i]; //save V0 to VX in memory[I -> I+x]
 					}
 					*I+=X+1;
 					break;
 				case 0x65:
 					for(int i = 0; i <= X; i++){
-                        V[i] = memory[(*I)+i];
+                        V[i] = memory[(*I)+i];//loads V0 to VX from memory[I -> I+x]
                     }
 					*I+=X+1;
 					break;
 			}
 			break;
 	}
+	//update the PC if the instruction allows for it
 	if ((val & 0xF000) != 0x1000 &&  // Not JP
     	(val & 0xF000) != 0x2000 &&  // Not CALL
     	(val != 0x00EE) &&  // Not RET
@@ -251,7 +256,7 @@ void decode(uint16_t val, uint16_t *PC, uint16_t *Stack, uint8_t *SP, uint16_t *
 	}
 
 }
-
+//highkey redundant but wtv (idrk what i was thinking when i did this, couldv'e just added the font directly into memeory)
 void initFont(uint8_t *memory, char *name){ //initializing font data in memory
 FILE *file = fopen(name, "rb");
     if(file == NULL){
@@ -259,7 +264,7 @@ FILE *file = fopen(name, "rb");
         return;
     }
 	fseek(file, 0, SEEK_END);
-    long file_size = ftell(file);
+    size_t file_size = ftell(file);
     rewind(file);
     char *buffer = calloc(file_size, 1);
     if (buffer == NULL) {
@@ -288,7 +293,7 @@ FILE *file = fopen(name, "rb");
         free(buffer);
         fclose(file);	
 }
-
+//loads rom into memory
 void load(uint8_t *memory, char* name){
 	FILE *file = fopen(name, "rb");
 	if(file == NULL){
@@ -296,7 +301,7 @@ void load(uint8_t *memory, char* name){
 		return;
 	}
 	fseek(file, 0, SEEK_END);
-    long file_size = ftell(file);
+    size_t file_size = ftell(file);
     rewind(file);	
 	char *buffer = calloc(file_size, 1);
     if (buffer == NULL) {
@@ -318,14 +323,14 @@ void load(uint8_t *memory, char* name){
     }
 
     printf("Raw data read from file:\n");
-    for (size_t i = 0; i < bytes_read; i++) {
+    for (size_t i = 0; i < bytes_read && (i + 512) < 4096; i++) {
 		memory[i+512] = (unsigned char)buffer[i];
     }
 
         free(buffer);
         fclose(file);
 }
-
+//updates sound and delay timers
 void timers(uint8_t *delay, uint8_t *sound){
 	if(*delay > 0){
 		*delay-=1;

@@ -1,18 +1,14 @@
 #include <stdio.h>
 #include <stdint.h>
-//#include <conio.h>
 #include <SDL2/SDL.h>
 #include <stdbool.h>
 #include <string.h>
 #define WIDTH 640
 #define HEIGHT 320
 #define WINDOW_TITLE "chip8"
-uint8_t memory[4096];
-uint8_t V[16];
 uint16_t PC;
 uint16_t I;
 uint8_t SP;
-uint16_t Stack[16];
 uint8_t delay;
 uint8_t sound;
 typedef struct{
